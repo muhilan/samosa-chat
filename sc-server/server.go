@@ -1,34 +1,22 @@
 package main
 
 import ( "net/http"
- 
    "golang.org/x/net/http2"
-
    "fmt"
-
+   "log"
    )
 
 func main(){
 
-	fmt.Println("Server")
-
 	var srv http.Server
 
-	srv.Addr = ":8081"
-
-	
-
-	//Enable http2
+	srv.Addr = ":8080"
 
 	http2.ConfigureServer(&srv, nil)
-		http.HandleFunc("/", handlerHtml)
-	fmt.Println("Server started on 8081 ")
-	srv.ListenAndServeTLS("certs/localhost.cert", "certs/localhost.key")
-
-	
-
-
-
+	http.HandleFunc("/", handlerHtml)
+	fmt.Println("Server started on 8080 ")
+	err := srv.ListenAndServeTLS("certs/localhost.cert", "certs/localhost.key")
+	log.Fatal(err)
 
 }
 
