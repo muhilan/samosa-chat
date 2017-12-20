@@ -11,8 +11,14 @@ import (
     "io/ioutil"
     "bytes"
     "encoding/json"
+    "os/user"
 )
-
+type ClientMetadata struct{
+    Owner string
+    ChatServerHost string
+    ChatServerPort string
+    OwnerEmail string
+}
 type Message struct {
     Owner   string  
     Time string 
@@ -23,8 +29,12 @@ type MessageContext struct {
     msgs []Message  `json:"msgs"`
 }
 
+var clientMD ClientMetadata
+var home string
+
 func main() {
     log.Print("Entry")
+    clientMD = getClientMetaData()
     err := ui.Main(func() {
         newchat := ui.NewEntry()
         button := ui.NewButton("Send")
@@ -54,7 +64,11 @@ func main() {
 }
 
 func formatText(newchat string) string{
-    str := string(time.Now().Format("2006-01-02 15:04:05")) + "  " + newchat + "\n"
+    currentEpocy := int64(time.Now().Unix())
+    tm := time.Unix(currentEpocy, 0)
+    fmt.Println(tm)
+
+    str := fmt.Sprintf(  "%s (%s): %s \n", tm.Format("2006-01-02 15:04:05"), clientMD.Owner, newchat)
     Post(str)
     return  str
 }
@@ -87,3 +101,23 @@ func Post(str string){
 
 }
 
+/* Helper method to retrieve the client specific json file */
+
+func getClientMetaData() ClientMetadata {
+    raw, err := ioutil.ReadFile(homeDir()+ "/.samosa-chat.json")
+    if err != nil {
+        fmt.Println(err.Error())
+    }
+    var c ClientMetadata
+    json.Unmarshal(raw, &c)
+    return c
+}
+
+/* Util method to retrieve the home dir */
+func homeDir() string {
+    usr, err := user.Current()
+    if err != nil {
+        log.Fatal( err )
+    }
+    return usr.HomeDir
+}

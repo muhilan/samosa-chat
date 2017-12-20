@@ -12,6 +12,7 @@ type Message struct {
 	Owner   string  `json:"Owner"`
 	Time string `json:"Time"`
 	Text string `json:"Text"`
+
 }
 
 
