@@ -8,6 +8,7 @@ An extremely simple chat Application in Go
 
 ```
 cd sc-server
+go get
 go run server.go
 ````
 
@@ -25,5 +26,6 @@ go run server.go
 and to start your client app 
 ````
 cd sc-client
+go get
 go run client.go
 ````
