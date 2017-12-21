@@ -11,6 +11,7 @@ import (
 	"time"
 	"bufio"
 	"net"
+	"github.com/gen2brain/beeep"
 )
 
 type ClientMetadata struct {
@@ -87,6 +88,11 @@ func main() {
 				fmt.Println("About to paint message => " + msg.Text)
 
 				if msg.Text != "" {
+					err := beeep.Notify("New Message", msg.Text)
+					fmt.Println("Before notification")
+					if err != nil {
+						panic(err)
+					}
 					multi.Append(formatText(msg.Time, msg.Text))
 				}
 			}
@@ -104,7 +110,7 @@ func main() {
 		box.Append(multi, true)
 		box.Append(horbox, false)
 
-		window := ui.NewWindow("Samosa Chat", 300, 600, false)
+		window := ui.NewWindow("Samosa Chat", 300, 600, true)
 		window.SetChild(box)
 		button.OnClicked(func(*ui.Button) {
 			Post(newchat.Text(), time.Now().Unix())
