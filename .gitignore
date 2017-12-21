@@ -1,3 +1,5 @@
-sc-client/sc-client
-sc-server/sc-server
-
+sc-client/.idea/
+sc-client/client
+sc-server/.idea/
+sc-server/certs/
+sc-server/server

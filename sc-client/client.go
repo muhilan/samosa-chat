@@ -1,7 +1,6 @@
 package main
 
 import (
-	// "github.com/andlabs/ui"
 	"encoding/json"
 	"fmt"
 	"github.com/ProtonMail/ui"
@@ -12,7 +11,7 @@ import (
 	"bufio"
 	"net"
 	"github.com/gen2brain/beeep"
-	_ "net/http/pprof"
+	"os"
 )
 
 type ClientMetadata struct {
@@ -30,24 +29,19 @@ type MessageContext struct {
 }
 
 var clientMD ClientMetadata
-var home string
 
 var messages = make(chan MessageContext)
 var connectionC = make(chan net.Conn)
 var conn net.Conn
 
 func main() {
-	log.Print("Entry")
-
 	clientMD = getClientMetaData()
 	go func() {
 		select {
 			case conn := <-connectionC :
 			reader := bufio.NewReader(conn)
-
 			for {
 				in, err := reader.ReadString('\n')
-				fmt.Println("Received value ", string(in))
 				if err != nil {
 					break
 				}
@@ -57,7 +51,6 @@ func main() {
 					fmt.Println(err)
 					continue
 				}
-				fmt.Println("Received value111 ", msg)
 				messages <- msg
 			}
 		}
@@ -68,29 +61,20 @@ func main() {
 		fmt.Println(err.Error())
 	}
 	conn.Write([]byte("\n"))
-	//if err == nil {
-	//	tlsConn = tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
-	//	//err = tlsConn.Handshake()
-	//	//if err != nil {
-	//	//	fmt.Println(err.Error())
-	//	//}
-	//}
-
 	connectionC <- conn
+
 
 	multi := ui.NewMultilineNonWrappingEntry()
 	multi.ReadOnly()
-
 
 	go func(){
 		for {
 			select {
 			case msg := <-messages:
-				fmt.Println("About to paint message => " + msg.Text)
-
 				if msg.Text != "" {
-					err := beeep.Notify("New Message", msg.Text)
-					fmt.Println("Before notification")
+					if msg.Owner != clientMD.Owner {
+						beeep.Notify("New Message", msg.Text)
+					}
 					if err != nil {
 						panic(err)
 					}
@@ -103,12 +87,12 @@ func main() {
 	}()
 
 	err = ui.Main(func() {
-		newchat := ui.NewEntry()
+		newChat := ui.NewEntry()
 		button := ui.NewButton("Send")
 
 		box := ui.NewVerticalBox()
 		horbox := ui.NewHorizontalBox()
-		horbox.Append(newchat, true)
+		horbox.Append(newChat, true)
 		horbox.Append(button, true)
 		box.Append(multi, true)
 		box.Append(horbox, false)
@@ -116,10 +100,11 @@ func main() {
 		window := ui.NewWindow("Samosa Chat", 300, 600, true)
 		window.SetChild(box)
 		button.OnClicked(func(*ui.Button) {
-			Post(newchat.Text(), time.Now().Unix())
+			post(newChat.Text(), time.Now().Unix())
 		})
 		window.OnClosing(func(*ui.Window) bool {
 			ui.Quit()
+			os.Exit(0)
 			return true
 		})
 		window.Show()
@@ -131,17 +116,15 @@ func main() {
 
 }
 
-func formatText(epoch int64, newchat string) string {
+func formatText(epoch int64, newChat string) string {
 	tm := time.Unix(epoch, 0)
-	str := fmt.Sprintf("%s (%s): %s \n", tm.Format("2006-01-02 15:04:05"), clientMD.Owner, newchat)
-	fmt.Println(str)
+	str := fmt.Sprintf("%s (%s): %s \n", tm.Format("2006-01-02 15:04:05"), clientMD.Owner, newChat)
 	return str
 }
 
-func Post(str string, epoch int64) {
+func post(str string, epoch int64) {
 	msgCtx := MessageContext{ Owner: clientMD.Owner, Time: epoch, Text: str }
 	body := createPayload(&msgCtx)
-	fmt.Println(body + "")
 	fmt.Fprint(conn, body)
 }
 

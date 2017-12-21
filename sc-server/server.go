@@ -1,14 +1,11 @@
 package main
 
 import (
-	//"net/http"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
-	"crypto/tls"
-	"crypto/rand"
 	"bufio"
+	"os"
 )
 
 type Message struct {
@@ -28,28 +25,25 @@ var messages = make(chan Message)
 
 
 func main() {
-
-	cert, err := tls.LoadX509KeyPair("certs/localhost.cert", "certs/localhost.key")
-	if err != nil {
-		log.Fatalf("server: loadkeys: %s", err)
+	port :=  "8080"
+	if os.Getenv("PORT") != "" {
+		port = os.Getenv("PORT")
 	}
-	config := tls.Config{Certificates: []tls.Certificate{cert}}
-	config.Rand = rand.Reader
-	port := "8080"
+
 	service := fmt.Sprintf("0.0.0.0:%s", port)
 	listener, err := net.Listen("tcp", service)
 
-	//listener, err := tls.Listen("tcp", service, &config)
 	if err != nil {
-		log.Fatalf("server: listen: %s", err)
+		fmt.Errorf("server: listen: %s", err)
 	}
-	log.Printf("server: listening on port %s",port)
+	fmt.Printf("server: listening on port %s",port)
 
 	go func() {
 		for {
 			select {
 			case connCtx := <-activeConns:
 				fmt.Println("Handling connection for  "+ connCtx.owner)
+				// There wouldn't be any owner for the first time message
 				if connCtx.owner == "" {
 					connCtx.owner = "master"
 				}
@@ -70,8 +64,6 @@ func main() {
 							err = json.Unmarshal([]byte(incoming), &msg)
 							if err != nil {
 								fmt.Println(err.Error())
-								//http.Error(w, err.Error(), 500)
-								//return
 							}
 						}
 						messages <- msg
@@ -79,10 +71,9 @@ func main() {
 				}(connCtx.connection, connCtx.owner)
 
 			case singleMessage := <-messages:
-				fmt.Println("Received Msg : "+ singleMessage.Text)
 				for conn, clientId := range connMap {
 					go func(conn net.Conn, msg string) {
-						fmt.Printf("Sending message to client : %s , Message => %s \n", clientId, singleMessage.Text)
+						fmt.Printf("Sending message to client : %s \n", clientId)
 						_, err := conn.Write([]byte(getJSONString(singleMessage)))
 						if err != nil {
 							deadConns <- conn
@@ -100,10 +91,10 @@ func main() {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Printf("server: accept: %s", err)
+			fmt.Printf("server: accept: %s", err)
 			break
 		}
-		log.Printf("server: accepted from %s", conn.RemoteAddr()) //}
+		fmt.Printf("server: accepted from %s", conn.RemoteAddr()) //}
 		activeConns <- ConnectionContext{connection: conn}
 
 	}
@@ -116,6 +107,5 @@ func getJSONString(msgCtx Message) string {
 		fmt.Println(err)
 		return ""
 	}
-	fmt.Println("Get json : " + string(b) + "\n")
 	return string(b) + "\n"
 }
