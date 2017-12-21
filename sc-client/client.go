@@ -2,17 +2,15 @@ package main
 
 import (
 	// "github.com/andlabs/ui"
-	//"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"github.com/ProtonMail/ui"
 	"io/ioutil"
 	"log"
-	//"net/http"
 	"os/user"
 	"time"
 	"bufio"
+	"net"
 )
 
 type ClientMetadata struct {
@@ -33,42 +31,65 @@ var clientMD ClientMetadata
 var home string
 
 var messages = make(chan MessageContext)
-var conn *tls.Conn
+var connectionC = make(chan net.Conn)
+var conn net.Conn
 
 func main() {
 	log.Print("Entry")
 
 	clientMD = getClientMetaData()
+	go func() {
+		select {
+			case conn := <-connectionC :
+			reader := bufio.NewReader(conn)
+
+			for {
+				in, err := reader.ReadString('\n')
+				fmt.Println("Received value ", string(in))
+				if err != nil {
+					break
+				}
+				var msg MessageContext
+				err = json.Unmarshal([]byte(in), &msg)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				fmt.Println("Received value111 ", msg)
+				messages <- msg
+			}
+		}
+	}()
     var err error
-	conn, err = tls.Dial("tcp", fmt.Sprintf("%s:%s", clientMD.ChatServerHost,clientMD.ChatServerPort), &tls.Config{InsecureSkipVerify : true})
+	conn, err = net.Dial("tcp",  fmt.Sprintf("%s:%s", clientMD.ChatServerHost, clientMD.ChatServerPort))
 	if err != nil {
-		panic(err)
+		fmt.Println(err.Error())
 	}
+	conn.Write([]byte("\n"))
+	//if err == nil {
+	//	tlsConn = tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
+	//	//err = tlsConn.Handshake()
+	//	//if err != nil {
+	//	//	fmt.Println(err.Error())
+	//	//}
+	//}
+
+	connectionC <- conn
+
 	multi := ui.NewMultilineNonWrappingEntry()
 	multi.ReadOnly()
 
-	go func() {
-		reader := bufio.NewReader(conn)
-		for {
-			in, err := reader.ReadString('\n')
-			fmt.Printf("Received message %s\n",string(in))
-			if err != nil {
-				break
-			}
-			var msg MessageContext
-			err = json.Unmarshal([]byte(in), &msg)
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			messages <- msg
-		}
-	}()
+
 	go func(){
-		select {
-		case msg := <-messages:
-			fmt.Println("About to paint message")
-			multi.Append(formatText(msg.Time,msg.Text))
+		for {
+			select {
+			case msg := <-messages:
+				fmt.Println("About to paint message => " + msg.Text)
+
+				if msg.Text != "" {
+					multi.Append(formatText(msg.Time, msg.Text))
+				}
+			}
 		}
 	}()
 
@@ -104,14 +125,14 @@ func main() {
 func formatText(epoch int64, newchat string) string {
 	tm := time.Unix(epoch, 0)
 	str := fmt.Sprintf("%s (%s): %s \n", tm.Format("2006-01-02 15:04:05"), clientMD.Owner, newchat)
-	Post(str, epoch)
+	fmt.Println(str)
 	return str
 }
 
 func Post(str string, epoch int64) {
 	msgCtx := MessageContext{ Owner: clientMD.Owner, Time: epoch, Text: str }
-	body := postPayload(createPayload(&msgCtx))
-	fmt.Println(body)
+	body := createPayload(&msgCtx)
+	fmt.Println(body + "")
 	fmt.Fprint(conn, body)
 }
 
@@ -136,20 +157,11 @@ func homeDir() string {
 	return usr.HomeDir
 }
 
-func formatDate(epoch int64) string {
-    tm := time.Unix(epoch, 0)
-    return tm.Format("2006-01-02 15:04:05")
-}
-
-func postPayload(msg string) string{
-	return fmt.Sprintf("POST / HTTP/1.1\nContent-Type: application/json\nConnection: Keep-Alive\nHost: 127.0.0.1\nUser-Agent: chat-client\n\n%s\n\n",msg)
-}
-
 func createPayload(msgCtx *MessageContext) string {
 	b, err := json.Marshal(msgCtx)
 	if err != nil {
 		fmt.Println(err)
 		return ""
 	}
-	return string(b)
+	return string(b) + "\n"
 }

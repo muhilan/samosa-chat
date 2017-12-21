@@ -1,12 +1,14 @@
 package main
 
 import (
-	"net/http"
+	//"net/http"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
+	"crypto/tls"
+	"crypto/rand"
+	"bufio"
 )
 
 type Message struct {
@@ -27,35 +29,67 @@ var messages = make(chan Message)
 
 func main() {
 
-	var srv http.Server
+	cert, err := tls.LoadX509KeyPair("certs/localhost.cert", "certs/localhost.key")
+	if err != nil {
+		log.Fatalf("server: loadkeys: %s", err)
+	}
+	config := tls.Config{Certificates: []tls.Certificate{cert}}
+	config.Rand = rand.Reader
+	port := "8080"
+	service := fmt.Sprintf("0.0.0.0:%s", port)
+	listener, err := net.Listen("tcp", service)
 
-	srv.Addr = ":8080"
+	//listener, err := tls.Listen("tcp", service, &config)
+	if err != nil {
+		log.Fatalf("server: listen: %s", err)
+	}
+	log.Printf("server: listening on port %s",port)
 
-	// http2.ConfigureServer(&srv, nil)
-	http.HandleFunc("/", hiJack)
-	//http.HandleFunc("/hijack", hiJack)
-	fmt.Println("Server started on 8080 ")
 	go func() {
 		for {
 			select {
 			case connCtx := <-activeConns:
-				fmt.Printf("Handling connection for %s ", connCtx.owner)
-				_ , err := connCtx.connection.Write([]byte("Output"))
-				if err != nil {
-					deadConns <- connCtx.connection
+				fmt.Println("Handling connection for  "+ connCtx.owner)
+				if connCtx.owner == "" {
+					connCtx.owner = "master"
 				}
-			case message := <-messages:
-				fmt.Printf("Received Msg : %s \n", message)
+				connMap[connCtx.connection] = connCtx.owner
+				go func(conn net.Conn, owner string) {
+					reader := bufio.NewReader(conn)
+					for {
+						fmt.Println("Inside for loop waiting for messages")
+						incoming, err := reader.ReadString('\n')
+						fmt.Println("Got new msg "+ incoming)
+						if err != nil {
+							fmt.Println(err.Error())
+							deadConns <- connCtx.connection
+							break
+						}
+						var msg Message
+						if incoming != "" {
+							err = json.Unmarshal([]byte(incoming), &msg)
+							if err != nil {
+								fmt.Println(err.Error())
+								//http.Error(w, err.Error(), 500)
+								//return
+							}
+						}
+						messages <- msg
+					}
+				}(connCtx.connection, connCtx.owner)
+
+			case singleMessage := <-messages:
+				fmt.Println("Received Msg : "+ singleMessage.Text)
 				for conn, clientId := range connMap {
-					go func(conn net.Conn, msg string){
-						fmt.Printf("Sending message to client : %s , Message => %s \n", clientId, message.Text)
-						_,err := conn.Write([]byte(msg))
+					go func(conn net.Conn, msg string) {
+						fmt.Printf("Sending message to client : %s , Message => %s \n", clientId, singleMessage.Text)
+						_, err := conn.Write([]byte(getJSONString(singleMessage)))
 						if err != nil {
 							deadConns <- conn
 						}
-					}(conn, message.Text)
+					}(conn, singleMessage.Text)
 				}
-			case conn := <- deadConns:
+			case conn := <-deadConns:
 				conn.Close()
 				delete(connMap, conn)
 			}
@@ -63,81 +97,25 @@ func main() {
 		}
 	}()
 
-	err := srv.ListenAndServeTLS("certs/localhost.cert", "certs/localhost.key")
-	log.Fatal(err)
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Printf("server: accept: %s", err)
+			break
+		}
+		log.Printf("server: accepted from %s", conn.RemoteAddr()) //}
+		activeConns <- ConnectionContext{connection: conn}
 
-
+	}
 
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
-	b, err := ioutil.ReadAll(r.Body)
-	defer r.Body.Close()
+func getJSONString(msgCtx Message) string {
+	b, err := json.Marshal(msgCtx)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
+		fmt.Println(err)
+		return ""
 	}
-
-	// Unmarshal
-	var msg Message
-	err = json.Unmarshal(b, &msg)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-
-	output, err := json.Marshal(msg)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	w.Header().Set("content-type", "application/json")
-	w.Write(output)
-}
-
-
-
-
-
-func hiJack(w http.ResponseWriter, r *http.Request){
-    fmt.Println("Message received")
-	b, err := ioutil.ReadAll(r.Body)
-	fmt.Println(string(b))
-	defer r.Body.Close()
-	if err != nil {
-		fmt.Println(err.Error())
-		http.Error(w, err.Error(), 500)
-		return
-	}
-
-	// Unmarshal
-	var msg Message
-	err = json.Unmarshal(b, &msg)
-	if err != nil {
-		fmt.Println(err.Error())
-		http.Error(w, err.Error(), 500)
-		return
-	}
-
-	hj, ok := w.(http.Hijacker)
-	if !ok {
-		http.Error(w, "web server doesn't support hijacking", http.StatusInternalServerError)
-		return
-	}
-	conn, bufrw, err := hj.Hijack()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		deadConns <- conn
-		return
-	}
-	// Don't forget to close the connection:
-	//defer conn.Close()
-	bufrw.WriteString("")
-	bufrw.Flush()
-
-	//connMap[msg.Owner] = conn
-	activeConns <- ConnectionContext{connection: conn, owner: msg.Owner}
-	connMap[conn] = msg.Owner
-	fmt.Println(msg)
-	messages <- msg
+	fmt.Println("Get json : " + string(b) + "\n")
+	return string(b) + "\n"
 }
