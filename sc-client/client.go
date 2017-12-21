@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"net"
 	"github.com/gen2brain/beeep"
+	_ "net/http/pprof"
 )
 
 type ClientMetadata struct {
@@ -93,7 +94,9 @@ func main() {
 					if err != nil {
 						panic(err)
 					}
-					multi.Append(formatText(msg.Time, msg.Text))
+					ui.QueueMain(func () {
+						multi.Append(formatText(msg.Time, msg.Text))
+					})
 				}
 			}
 		}
