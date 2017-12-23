@@ -33,6 +33,7 @@ var clientMD ClientMetadata
 var messages = make(chan MessageContext)
 var connectionC = make(chan net.Conn)
 var conn net.Conn
+var multi *ui.MultilineEntry
 
 func main() {
 	clientMD = getClientMetaData()
@@ -63,17 +64,14 @@ func main() {
 	conn.Write([]byte("\n"))
 	connectionC <- conn
 
-
-	multi := ui.NewMultilineNonWrappingEntry()
-	multi.ReadOnly()
-
 	go func(){
 		for {
 			select {
 			case msg := <-messages:
 				if msg.Text != "" {
 					if msg.Owner != clientMD.Owner {
-						beeep.Notify("New Message", msg.Text)
+						beeep.Notify("New Message from " + msg.Owner, msg.Text)
+						beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
 					}
 					if err != nil {
 						panic(err)
@@ -89,7 +87,8 @@ func main() {
 	err = ui.Main(func() {
 		newChat := ui.NewEntry()
 		button := ui.NewButton("Send")
-
+		multi = ui.NewMultilineNonWrappingEntry()
+		multi.ReadOnly()
 		box := ui.NewVerticalBox()
 		horbox := ui.NewHorizontalBox()
 		horbox.Append(newChat, true)

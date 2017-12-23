@@ -3,3 +3,4 @@ sc-client/client
 sc-server/.idea/
 sc-server/certs/
 sc-server/server
+sc-client/sc-client
